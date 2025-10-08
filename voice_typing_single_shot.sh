@@ -7,6 +7,61 @@
 # Dependencies: arecord, ffmpeg, awk, wtype or xdotool
 # Requires: whisper.cpp built with vad-speech-segments and whisper-cli
 
+# Function to show help message
+show_help() {
+    cat << EOF
+Voice Typing - Single Shot Mode
+
+USAGE:
+    $0 [-h]
+
+DESCRIPTION:
+    Records audio from your microphone and transcribes it using Whisper AI.
+    The script automatically detects when you stop speaking (after 3 seconds 
+    of silence) and types the transcribed text into your currently active window.
+    
+    This is designed to be triggered via keyboard shortcut or desktop launcher.
+    Simply activate it, speak your text, pause for 3 seconds, and the script
+    will automatically transcribe and type into whatever window has focus.
+
+OPTIONS:
+    -h, --help      Show this help message and exit
+
+FEATURES:
+    • Real-time speech detection using Silero-VAD
+    • Automatic stop after silence (configurable)
+    • Types directly into active window (uses wtype or xdotool)
+    • Maximum recording time: 30 seconds
+
+DEPENDENCIES:
+    • arecord (ALSA sound recorder)
+    • ffmpeg (audio processing)
+    • wtype or xdotool (for typing into windows)
+    • whisper.cpp with whisper-cli and vad-speech-segments
+
+MODELS REQUIRED:
+    • Whisper model: models/ggml-large-v3.bin
+    • VAD model: models/ggml-silero-v5.1.2.bin
+
+EXAMPLE:
+    # Run directly
+    ./voice_typing_single_shot.sh
+    
+    # Set as GNOME keyboard shortcut
+    # 1. Go to Settings → Keyboard → Custom Shortcuts
+    # 2. Add new shortcut pointing to this script
+    # 3. Press your chosen key combo (e.g. Super+V)
+    # 4. Use: Focus any text field, press shortcut, speak, wait 3s
+
+EOF
+    exit 0
+}
+
+# Parse command line arguments
+if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+    show_help
+fi
+
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
@@ -22,6 +77,15 @@ VAD_THRESHOLD=0.4           # Higher = more confident speech required
 SILENCE_DURATION_MS=3000    # Milliseconds of silence to end recording
 CHUNK_DURATION_MS=500       # Check every 500ms
 MAX_RECORDING_TIME_MS=30000 # Maximum recording time in milliseconds
+
+# Check if typing tools are available
+if ! command -v wtype &> /dev/null && ! command -v xdotool &> /dev/null; then
+    echo "❌ Error: No typing tool found"
+    echo "   Install either:"
+    echo "   - wtype (for Wayland): sudo apt install wtype"
+    echo "   - xdotool (for X11): sudo apt install xdotool"
+    exit 1
+fi
 
 # Check if required files exist
 if [ ! -f "$WHISPER_CLI" ]; then
@@ -52,11 +116,40 @@ fi
 # Function to type text into active window
 type_text() {
     local text="$1"
-    if [ -n "$text" ] && [ "$text" != " " ] && [ "$text" != "." ]; then
-        echo "⌨️  Typing: $text"
-        # Add a space before typing to separate from previous text
-        printf " %s" "$text" | wtype - 2>/dev/null || printf " %s" "$text" | xdotool type --clearmodifiers --delay 0 --file - 2>/dev/null
+    
+    # Skip empty or meaningless text
+    if [ -z "$text" ] || [ "$text" = " " ] || [ "$text" = "." ]; then
+        return
     fi
+    
+    echo "⌨️  Typing: $text"
+    
+    # Small delay to ensure the window is ready to receive input
+    sleep 0.1
+    
+    # Try wtype first (Wayland), then xdotool (X11)
+    if command -v wtype &> /dev/null; then
+        # Use wtype for Wayland
+        printf "%s" "$text" | wtype -
+        if [ $? -eq 0 ]; then
+            return 0
+        fi
+    fi
+    
+    if command -v xdotool &> /dev/null; then
+        # Use xdotool for X11
+        # --clearmodifiers ensures no stuck modifier keys interfere
+        # --delay 0 types as fast as possible
+        printf "%s" "$text" | xdotool type --clearmodifiers --delay 0 --file -
+        if [ $? -eq 0 ]; then
+            return 0
+        fi
+    fi
+    
+    # If we get here, neither tool worked
+    echo "⚠️  Warning: Could not type text. Install 'wtype' (Wayland) or 'xdotool' (X11)"
+    echo "    Transcribed text: $text"
+    return 1
 }
 
 # Function to check if audio contains speech using Silero-VAD
