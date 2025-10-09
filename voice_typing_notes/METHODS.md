@@ -2,18 +2,32 @@
 
 ## Frontend: How transcribed text is typed into applications
 
-All voice typing solutions on Linux use **keyboard simulation tools** to inject text into the active window, not virtual keyboards or IME frameworks. The common approaches are:
+Voice typing solutions on Linux use **input injection tools** to send text into the active window, not virtual keyboards or IME frameworks. The recommended approaches for Ubuntu 25.04 are:
 
-- **`xdotool`** (X11): Simulates keyboard input by sending X11 events to the X Window System
-- **`ydotool`** (Wayland): Simulates keyboard input via the uinput kernel module, works across all Wayland compositors
-- **`wtype`** (Wayland alternative): Another tool for Wayland keyboard simulation
-- **`pyautogui`** (Python cross-platform): A wrapper library that uses xdotool on Linux
+- **`libei`** (Wayland, recommended): The modern Wayland-native protocol for emulated input. Works on Ubuntu 25.04's GNOME and KDE Plasma 6.1+. More secure than traditional methods (no root/uinput access), compositor-aware, and supports full Unicode. This is the proper approach for modern Wayland compositors; older GNOME versions (before 45) and wlroots-based compositors (Sway, etc.) didn't and still don't support it.
+
+- **`wtype`** (Wayland, universal fallback): Text-input tool that supports full Unicode and works across all Wayland compositors. Use this if your compositor doesn't support libei.
+
+- **`ydotool`** (Wayland, legacy): Simulates keyboard input via the uinput kernel module. Works universally but requires root/uinput permissions and is limited to the current keyboard layout. Use this for legacy compatibility or if wtype/libei aren't available.
+
+- **`xdotool`** (X11 only): For systems still using X11 instead of Wayland. Limited to keyboard layout characters.
+
+- **`pyautogui`** (Python cross-platform): A wrapper library that uses xdotool on Linux. Same limitations as xdotool.
+
+**Multilingual and Unicode support:**
+
+For English and languages using Latin script, all methods work. However, for **non-keyboard characters** (Chinese, Japanese, Arabic, Korean, emoji, special symbols), support varies:
+
+- **`libei`** and **`wtype`**: Full Unicode support—can type any character regardless of keyboard layout
+- **`xdotool`**, **`ydotool`**, **`pyautogui`**: Limited to characters available on the current keyboard layout; struggle with complex scripts
+
+For multilingual voice typing with non-Latin scripts, use `libei` (recommended for Ubuntu 25.04's GNOME) or `wtype` (works everywhere on Wayland). For Latin-script languages only, any method works.
 
 **Why not virtual keyboards or IME frameworks?**
 
-Virtual keyboards (like on-screen keyboards) display graphical UI and are meant for manual touch/click input. IME frameworks (ibus, fcitx, GNOME mutter input method protocol) are designed for complex input methods like Chinese/Japanese character composition and would be significantly more complex to implement for voice typing. Keyboard simulation is simpler, more reliable, and works universally across all applications for voice typing purposes.
+Virtual keyboards (like on-screen keyboards) display graphical UI and are meant for manual touch/click input. IME frameworks (ibus, fcitx, GNOME mutter input method protocol) are designed for complex input methods like Chinese/Japanese character composition and would be significantly more complex to implement for voice typing. Input injection tools are simpler, more reliable, and work universally across all applications for voice typing purposes.
 
-**Implementation note:** The existing script (`voice_typing_single_shot.sh`) already uses ydotool/xdotool, which is the standard frontend approach used by all voice typing solutions discussed in the backend sections below.
+**Implementation note:** The existing script (`voice_typing_single_shot.sh`) uses ydotool/xdotool, which provides good compatibility. For new implementations on Ubuntu 25.04, consider using libei for better security and Unicode support, or wtype if you need broader compositor compatibility.
 
 ---
 
@@ -93,11 +107,12 @@ Some users accept duplicative transcriptions (append every new transcript even i
 
 To build a voice typing tool on Ubuntu 25.04, you need to integrate three main components:
 
-**Frontend (keyboard simulation):**
-- Use `xdotool` (X11) or `ydotool`/`libinput` (Wayland) to send keystrokes to the active window
-- On Wayland, `wtype` or GNOME's built‑in Remote Desktop API may be alternative options
-- For cross‑platform Python, `pyautogui` can send keystrokes but may require xdotool for reliability on Linux
-- Ensure ydotoold service is running if using ydotool
+**Frontend (input injection):**
+- **Recommended:** Use `libei` on Ubuntu 25.04's GNOME for secure, compositor-aware input with full Unicode support (no root/uinput permissions needed). This is the proper modern approach; it wasn't available on older GNOME versions before 45.
+- **Universal fallback:** Use `wtype` for Unicode support across any Wayland compositor, or `ydotool` for broader compatibility (requires ydotoold service and uinput permissions)
+- **Legacy/X11:** Use `xdotool` only if still on X11
+- **Python wrapper:** `pyautogui` wraps xdotool on Linux but has the same keyboard-layout limitations
+- For **multilingual/non-Latin scripts** (Chinese, Japanese, Arabic, Korean): you must use `libei` or `wtype`; other tools cannot type characters outside your keyboard layout
 
 **Backend (speech recognition engine):**
 - Choose one of the approaches above based on your requirements:
@@ -118,7 +133,15 @@ To build a voice typing tool on Ubuntu 25.04, you need to integrate three main c
 
 **Frontend (typing mechanism):**
 
-All voice typing solutions on Linux use keyboard simulation tools (`xdotool`, `ydotool`, `wtype`, or `pyautogui`). Virtual keyboards and IME frameworks are not used for voice typing because keyboard simulation is simpler, more reliable, and works universally across all applications. The existing `voice_typing_single_shot.sh` script already implements the standard frontend correctly using ydotool/xdotool.
+Voice typing solutions on Linux use input injection tools. Virtual keyboards and IME frameworks are not used for voice typing because input injection is simpler, more reliable, and works universally across all applications.
+
+**For Ubuntu 25.04 (GNOME 47+):** Use `libei` as the recommended modern approach. It's more secure (no root/uinput access), compositor-aware, and supports full Unicode for all languages. This wasn't available on older systems (GNOME before version 45), which is why older tools like ydotool exist.
+
+**For other systems:** Use `wtype` (any Wayland compositor with Unicode support), `ydotool` (universal Wayland with keyboard-layout limitations), or `xdotool` (X11 only).
+
+**For multilingual/non-Latin scripts:** You must use `libei` or `wtype`. Tools like `xdotool` and `ydotool` cannot type Chinese, Japanese, Arabic, Korean, or other characters outside your keyboard layout.
+
+**Note:** The existing `voice_typing_single_shot.sh` script uses ydotool/xdotool for broad compatibility. Consider migrating to libei for better security and Unicode support on Ubuntu 25.04.
 
 **Backend (speech recognition):**
 
@@ -142,4 +165,4 @@ The choice of backend depends on your specific requirements:
 - **Open source + continuous:** Vosk or Coqui STT
 - **Cost-conscious:** Whisper CLI (completely free) or Vosk (free)
 
-Implementing voice typing using one of these approaches will provide a practical, modern voice typing tool on Ubuntu 25.04. The frontend (keyboard simulation) remains the same regardless of which backend you choose.
+Implementing voice typing using one of these approaches will provide a practical, modern voice typing tool on Ubuntu 25.04. The frontend (input injection) choice depends on your environment and language requirements, but the backend can be selected independently based on your needs for accuracy, latency, privacy and cost.
