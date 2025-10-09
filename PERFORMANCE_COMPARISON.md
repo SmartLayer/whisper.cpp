@@ -6,6 +6,8 @@
 - **Model**: ggml-medium.en.bin
 - **Test File**: samples/jfk.wav (11 seconds, 176,000 samples)
 - **Threads**: 4
+- **Test Date**: 9 October 2025
+- **Verification**: Results verified reproducible with same audio file (CPU encode: 12,635.75 ms vs documented 12,537 ms - 0.8% variance)
 
 ## Results Summary
 
