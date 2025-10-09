@@ -264,9 +264,14 @@ if [ -s "$TEMP_AUDIO" ] && [ "$speech_detected" = true ]; then
     echo "🔄 Transcribing..."
     
     # Use whisper-cli to transcribe the full recording
+    # Performance optimizations:
+    # -t $(nproc): Use all available CPU cores
+    # -nf: No temperature fallback (faster, suitable for clear voice typing)
+    # -nt -np: Suppress timestamps and diagnostic output
     transcribed_text=$(timeout 30s $WHISPER_CLI \
         -m "$MODEL_PATH" \
-        -t 8 \
+        -t $(nproc) \
+        -nf \
         -f "$TEMP_AUDIO" \
         -nt -np 2>/dev/null | tail -n +2 | tr -d '\n\r')
     
