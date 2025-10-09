@@ -75,6 +75,10 @@ VAD_TOOL="./build/bin/vad-speech-segments"
 TEMP_AUDIO="/tmp/voice_typing_recording.wav"
 TEMP_CHUNK="/tmp/voice_typing_chunk.wav"
 
+# Initial prompt to improve accuracy for domain-specific terms
+# Condensed from capture-correction-index.md to fit Whisper's ~224 token limit
+PROMPT_TEXT="This is a business transcription for Historic Rivermill. Key people: Liansu Yu, Weiwu Zhang, Mike Wood, Rodrigo Peschiera, Priyanka Das, Diogo, Bhoomika Gondaliya. Locations: Historic Rivermill, Mount Nathan, Beaudesert-Nerang Road, Gold Coast Hinterland. Systems: Rezdy, Xero, Deputy, Square POS, AWS Connect. Terms: FOH, BOH, RSA, TSS visa, KPI, SOP, Maître d', à la carte, Peruvian Paso horses. Organizations: DETSI, TEQ, OLGR, ATO."
+
 # VAD settings - tuned for pause detection
 VAD_THRESHOLD=0.4           # Higher = more confident speech required
 SILENCE_DURATION_MS=3000    # Milliseconds of silence to end recording
@@ -268,11 +272,13 @@ if [ -s "$TEMP_AUDIO" ] && [ "$speech_detected" = true ]; then
     # -t $(nproc): Use all available CPU cores
     # -nf: No temperature fallback (faster, suitable for clear voice typing)
     # -nt -np: Suppress timestamps and diagnostic output
+    # --prompt: Initial prompt to guide transcription with domain-specific terms
     transcribed_text=$(timeout 30s $WHISPER_CLI \
         -m "$MODEL_PATH" \
         -t $(nproc) \
         -nf \
         -f "$TEMP_AUDIO" \
+        --prompt "$PROMPT_TEXT" \
         -nt -np 2>/dev/null | tail -n +2 | tr -d '\n\r')
     
     # Type the transcribed text if it's not empty
