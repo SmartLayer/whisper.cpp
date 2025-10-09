@@ -4,8 +4,9 @@
 # This script records and monitors in real-time using Silero-VAD
 # It automatically stops when you pause speaking (1.5s silence detected)
 #
-# Dependencies: arecord, ffmpeg, awk, wtype or xdotool
+# Dependencies: arecord, ffmpeg, awk, ydotool or xdotool
 # Requires: whisper.cpp built with vad-speech-segments and whisper-cli
+# Note: Uses Debian's ydotool 1.0.4-2 (not Ubuntu's 0.1.8) for Wayland/GNOME support
 
 # Function to show help message
 show_help() {
@@ -30,13 +31,15 @@ OPTIONS:
 FEATURES:
     • Real-time speech detection using Silero-VAD
     • Automatic stop after silence (configurable)
-    • Types directly into active window (uses wtype or xdotool)
+    • Types directly into active window (uses ydotool or xdotool)
     • Maximum recording time: 30 seconds
 
 DEPENDENCIES:
     • arecord (ALSA sound recorder)
     • ffmpeg (audio processing)
-    • wtype or xdotool (for typing into windows)
+    • ydotool or xdotool (for typing into windows)
+      - For Wayland/GNOME: ydotool 1.0.4-2 from Debian (not Ubuntu's 0.1.8)
+      - For X11: xdotool
     • whisper.cpp with whisper-cli and vad-speech-segments
 
 MODELS REQUIRED:
@@ -79,12 +82,25 @@ CHUNK_DURATION_MS=500       # Check every 500ms
 MAX_RECORDING_TIME_MS=30000 # Maximum recording time in milliseconds
 
 # Check if typing tools are available
-if ! command -v wtype &> /dev/null && ! command -v xdotool &> /dev/null; then
+if ! command -v ydotool &> /dev/null && ! command -v xdotool &> /dev/null; then
     echo "❌ Error: No typing tool found"
     echo "   Install either:"
-    echo "   - wtype (for Wayland): sudo apt install wtype"
+    echo "   - ydotool (for Wayland/GNOME): Download Debian's ydotool_1.0.4-2_amd64.deb"
+    echo "     wget http://deb.debian.org/debian/pool/main/y/ydotool/ydotool_1.0.4-2_amd64.deb"
+    echo "     sudo dpkg -i ydotool_1.0.4-2_amd64.deb"
+    echo "     sudo usermod -aG input \$USER  # then logout/login"
     echo "   - xdotool (for X11): sudo apt install xdotool"
     exit 1
+fi
+
+# Check if ydotoold is running (required for ydotool)
+if command -v ydotool &> /dev/null; then
+    if ! systemctl --user is-active --quiet ydotool.service; then
+        echo "⚠️  Warning: ydotoold service is not running"
+        echo "   Starting it now..."
+        systemctl --user start ydotool.service
+        sleep 0.5
+    fi
 fi
 
 # Check if required files exist
@@ -127,17 +143,16 @@ type_text() {
     # Small delay to ensure the window is ready to receive input
     sleep 0.1
     
-    # Try wtype first (Wayland), then xdotool (X11)
-    if command -v wtype &> /dev/null; then
-        # Use wtype for Wayland
-        printf "%s" "$text" | wtype -
+    # Try ydotool first (works on Wayland with GNOME and other compositors)
+    if command -v ydotool &> /dev/null; then
+        ydotool type "$text"
         if [ $? -eq 0 ]; then
             return 0
         fi
     fi
     
+    # Fallback to xdotool (works on X11 and XWayland apps)
     if command -v xdotool &> /dev/null; then
-        # Use xdotool for X11
         # --clearmodifiers ensures no stuck modifier keys interfere
         # --delay 0 types as fast as possible
         printf "%s" "$text" | xdotool type --clearmodifiers --delay 0 --file -
@@ -147,7 +162,7 @@ type_text() {
     fi
     
     # If we get here, neither tool worked
-    echo "⚠️  Warning: Could not type text. Install 'wtype' (Wayland) or 'xdotool' (X11)"
+    echo "⚠️  Warning: Could not type text. Install 'ydotool' (Wayland/GNOME) or 'xdotool' (X11)"
     echo "    Transcribed text: $text"
     return 1
 }
