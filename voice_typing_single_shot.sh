@@ -43,7 +43,7 @@ DEPENDENCIES:
     • whisper.cpp with whisper-cli and vad-speech-segments
 
 MODELS REQUIRED:
-    • Whisper model: models/ggml-large-v3.bin
+    • Whisper model: models/ggml-medium.en.bin
     • VAD model: models/ggml-silero-v5.1.2.bin
 
 EXAMPLE:
@@ -68,7 +68,7 @@ fi
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-MODEL_PATH="models/ggml-large-v3.bin"
+MODEL_PATH="models/ggml-medium.en.bin"
 VAD_MODEL_PATH="models/ggml-silero-v5.1.2.bin"
 WHISPER_CLI="./build/bin/whisper-cli"
 VAD_TOOL="./build/bin/vad-speech-segments"
