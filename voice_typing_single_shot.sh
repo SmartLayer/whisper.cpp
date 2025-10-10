@@ -24,6 +24,9 @@ DESCRIPTION:
     This is designed to be triggered via keyboard shortcut or desktop launcher.
     Simply activate it, speak your text, pause for 3 seconds, and the script
     will automatically transcribe and type into whatever window has focus.
+    
+    Press the shortcut again while recording to immediately stop and transcribe
+    (no need to wait for the silence pause).
 
 OPTIONS:
     -h, --help      Show this help message and exit
@@ -37,6 +40,7 @@ FEATURES:
 DEPENDENCIES:
     • arecord (ALSA sound recorder)
     • ffmpeg (audio processing)
+    • netcat (nc) and ss (socket tools for inter-process signaling)
     • ydotool or xdotool (for typing into windows)
       - For Wayland/GNOME: ydotool 1.0.4-2 from Debian (not Ubuntu's 0.1.8)
       - For X11: xdotool
@@ -72,8 +76,10 @@ MODEL_PATH="models/ggml-medium.en.bin"
 VAD_MODEL_PATH="models/ggml-silero-v5.1.2.bin"
 WHISPER_CLI="./build/bin/whisper-cli"
 VAD_TOOL="./build/bin/vad-speech-segments"
-TEMP_AUDIO="/tmp/voice_typing_recording.wav"
-TEMP_CHUNK="/tmp/voice_typing_chunk.wav"
+RECORDING_TIMESTAMP=$(date +%s)
+TEMP_AUDIO="/tmp/voice_typing_recording_${RECORDING_TIMESTAMP}.wav"
+TEMP_CHUNK="/tmp/voice_typing_chunk_${RECORDING_TIMESTAMP}.wav"
+LISTEN_PORT=49152  # Port to indicate recording in progress
 
 # Initial prompt to improve accuracy for domain-specific terms
 # Condensed from capture-correction-index.md to fit Whisper's ~224 token limit
@@ -84,6 +90,19 @@ VAD_THRESHOLD=0.4           # Higher = more confident speech required
 SILENCE_DURATION_MS=3000    # Milliseconds of silence to end recording
 CHUNK_DURATION_MS=500       # Check every 500ms
 MAX_RECORDING_TIME_MS=30000 # Maximum recording time in milliseconds
+
+# Check if required tools are available
+if ! command -v nc &> /dev/null; then
+    echo "❌ Error: netcat (nc) not found"
+    echo "   Install with: sudo apt install netcat-openbsd"
+    exit 1
+fi
+
+if ! command -v ss &> /dev/null; then
+    echo "❌ Error: ss (socket statistics) not found"
+    echo "   Install with: sudo apt install iproute2"
+    exit 1
+fi
 
 # Check if typing tools are available
 if ! command -v ydotool &> /dev/null && ! command -v xdotool &> /dev/null; then
@@ -191,22 +210,66 @@ has_speech() {
 
 # Function to clean up
 cleanup() {
+    # Stop the port listener if it's running
+    if [ -n "$LISTENER_PID" ]; then
+        kill $LISTENER_PID 2>/dev/null
+        wait $LISTENER_PID 2>/dev/null
+    fi
+    
     # Stop any background recording
     if [ -n "$RECORDING_PID" ]; then
         kill $RECORDING_PID 2>/dev/null
         wait $RECORDING_PID 2>/dev/null
     fi
+    
     rm -f "$TEMP_AUDIO" "$TEMP_CHUNK"
     exit 0
 }
 
-# Set up cleanup on exit
+# Set up signal handlers
 trap cleanup EXIT INT TERM
 
 # Main execution
+
+# Check if another instance is already recording (port in use)
+if ss -ln | grep -q ":$LISTEN_PORT "; then
+    echo "🔔 Another recording in progress - stopping it to transcribe now..."
+    
+    # Find the PID listening on that port (that's the nc listener)
+    NC_PID=$(ss -lntp 2>/dev/null | grep ":$LISTEN_PORT " | grep -oP 'pid=\K[0-9]+' | head -1)
+    
+    if [ -n "$NC_PID" ]; then
+        # Find the parent bash script PID
+        BASH_PID=$(ps -o ppid= -p $NC_PID | tr -d ' ')
+        
+        if [ -n "$BASH_PID" ]; then
+            # Find and kill the arecord child process of that bash script
+            ARECORD_PID=$(pgrep -P $BASH_PID arecord 2>/dev/null)
+            
+            if [ -n "$ARECORD_PID" ]; then
+                kill $ARECORD_PID 2>/dev/null
+                echo "✅ Stopped recording - transcription will start automatically"
+            else
+                echo "⚠️  Could not find arecord process"
+            fi
+        fi
+    fi
+    
+    exit 0
+fi
+
 echo "🎯 Voice Typing - Ready!"
 echo "🗣️  Speak now - will auto-detect when you finish ($(echo "scale=1; $SILENCE_DURATION_MS/1000" | bc)s pause)"
+echo "   Press shortcut again to stop early and transcribe immediately"
 echo "🎤 Recording..."
+
+# Start a port listener in background to signal we're recording
+# This allows new instances to detect us and send early-stop signal
+nc -l $LISTEN_PORT >/dev/null 2>&1 &
+LISTENER_PID=$!
+
+# Small delay to ensure listener is up
+sleep 0.1
 
 # Start recording in background
 arecord -f cd -t wav "$TEMP_AUDIO" 2>/dev/null &
@@ -224,9 +287,9 @@ while [ $total_time_ms -lt $MAX_RECORDING_TIME_MS ]; do
     sleep $(echo "scale=3; $CHUNK_DURATION_MS/1000" | bc)
     total_time_ms=$((total_time_ms + CHUNK_DURATION_MS))
     
-    # Check if recording is still running
+    # Check if recording is still running (will be false if killed by second shortcut press)
     if ! kill -0 $RECORDING_PID 2>/dev/null; then
-        echo "⚠️  Recording stopped unexpectedly"
+        echo "🛑 Recording stopped - proceeding to transcription"
         break
     fi
     
@@ -263,8 +326,17 @@ if [ -n "$RECORDING_PID" ]; then
     RECORDING_PID=""
 fi
 
+# Stop the port listener now - we're done recording
+# This allows a new instance to start if shortcut is pressed during transcription
+if [ -n "$LISTENER_PID" ]; then
+    kill $LISTENER_PID 2>/dev/null
+    wait $LISTENER_PID 2>/dev/null
+    LISTENER_PID=""
+fi
+
 # Transcribe if we recorded something with speech
-if [ -s "$TEMP_AUDIO" ] && [ "$speech_detected" = true ]; then
+# (speech_detected will be false if stopped early, but that's ok - we still transcribe)
+if [ -s "$TEMP_AUDIO" ]; then
     echo "🔄 Transcribing..."
     
     # Use whisper-cli to transcribe the full recording
