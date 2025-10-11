@@ -42,9 +42,10 @@ DEPENDENCIES:
     • ffmpeg (audio processing)
     • netcat (nc) and ss (socket tools for inter-process signaling)
     • ydotool or xdotool (for typing into windows)
-      - For Wayland/GNOME: ydotool 1.0.4-2 from Debian (not Ubuntu's 0.1.8)
+      - For Wayland sessions: ydotool 1.0.4-2 from Debian (not Ubuntu's 0.1.8)
         Must be properly configured with user in input group and service running
-      - For X11: xdotool
+      - For X11 sessions: xdotool
+      - Script automatically detects session type and selects appropriate tool
     • whisper.cpp with whisper-cli and vad-speech-segments
 
 MODELS REQUIRED:
@@ -110,28 +111,82 @@ if ! command -v ss &> /dev/null; then
     exit 1
 fi
 
+# Detect session type
+SESSION_TYPE=""
+if [ -n "$WAYLAND_DISPLAY" ]; then
+    SESSION_TYPE="wayland"
+elif [ -n "$DISPLAY" ]; then
+    SESSION_TYPE="x11"
+else
+    # Fallback detection methods
+    if [ -n "$XDG_SESSION_TYPE" ]; then
+        SESSION_TYPE="$XDG_SESSION_TYPE"
+    elif [ -n "$XDG_CURRENT_DESKTOP" ]; then
+        # Some desktop environments are typically Wayland
+        case "$XDG_CURRENT_DESKTOP" in
+            *GNOME*|*KDE*|*Sway*|*Hyprland*)
+                SESSION_TYPE="wayland"
+                ;;
+            *)
+                SESSION_TYPE="x11"
+                ;;
+        esac
+    else
+        SESSION_TYPE="unknown"
+    fi
+fi
+
 # Check if typing tools are available
 TYPING_TOOL=""
 TYPING_TOOL_NAME=""
 
-# Prefer ydotool if available
-if command -v ydotool &> /dev/null; then
-    TYPING_TOOL="ydotool"
-    TYPING_TOOL_NAME="ydotool (Wayland/GNOME)"
+# Select tool based on session type
+if [ "$SESSION_TYPE" = "wayland" ]; then
+    # Prefer ydotool for Wayland sessions
+    if command -v ydotool &> /dev/null; then
+        TYPING_TOOL="ydotool"
+        TYPING_TOOL_NAME="ydotool (Wayland/GNOME)"
+    elif command -v xdotool &> /dev/null; then
+        TYPING_TOOL="xdotool"
+        TYPING_TOOL_NAME="xdotool (XWayland fallback)"
+    fi
+elif [ "$SESSION_TYPE" = "x11" ]; then
+    # Prefer xdotool for X11 sessions
+    if command -v xdotool &> /dev/null; then
+        TYPING_TOOL="xdotool"
+        TYPING_TOOL_NAME="xdotool (X11)"
+    elif command -v ydotool &> /dev/null; then
+        TYPING_TOOL="ydotool"
+        TYPING_TOOL_NAME="ydotool (Wayland fallback)"
+    fi
+else
+    # Unknown session type - try both tools
+    if command -v ydotool &> /dev/null; then
+        TYPING_TOOL="ydotool"
+        TYPING_TOOL_NAME="ydotool (auto-detected)"
+    elif command -v xdotool &> /dev/null; then
+        TYPING_TOOL="xdotool"
+        TYPING_TOOL_NAME="xdotool (auto-detected)"
+    fi
 fi
 
-# Fallback to xdotool if ydotool not available
-if [ -z "$TYPING_TOOL" ] && command -v xdotool &> /dev/null; then
-    TYPING_TOOL="xdotool"
-    TYPING_TOOL_NAME="xdotool (X11/XWayland)"
-fi
+# Show session detection and tool selection
+echo "🔍 Detected session type: $SESSION_TYPE"
+echo "⌨️  Selected typing tool: $TYPING_TOOL_NAME"
 
 # Error if no typing tool is available
 if [ -z "$TYPING_TOOL" ]; then
-    echo "❌ Error: No typing tool found"
-    echo "Install either:"
-    echo "  - ydotool (Wayland/GNOME): sudo apt install ydotool"
-    echo "  - xdotool (X11): sudo apt install xdotool"
+    echo "❌ Error: No typing tool found for $SESSION_TYPE session"
+    echo "Install the appropriate tool:"
+    if [ "$SESSION_TYPE" = "wayland" ]; then
+        echo "  - ydotool (Wayland/GNOME): sudo apt install ydotool"
+        echo "    Note: Use Debian's version 1.0.4+ (not Ubuntu's 0.1.8)"
+    elif [ "$SESSION_TYPE" = "x11" ]; then
+        echo "  - xdotool (X11): sudo apt install xdotool"
+    else
+        echo "  - ydotool (Wayland): sudo apt install ydotool"
+        echo "  - xdotool (X11): sudo apt install xdotool"
+    fi
     exit 1
 fi
 
