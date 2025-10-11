@@ -192,7 +192,7 @@ type_text() {
     case "$TYPING_TOOL" in
         "ydotool")
             local ydotool_output
-            ydotool_output=$(ydotool type "$text" 2>&1)
+            ydotool_output=$(ydotool type --key-delay 0 "$text" 2>&1)
             local ydotool_exit_code=$?
             
             if [ $ydotool_exit_code -eq 0 ]; then
