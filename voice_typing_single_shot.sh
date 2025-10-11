@@ -43,6 +43,7 @@ DEPENDENCIES:
     • netcat (nc) and ss (socket tools for inter-process signaling)
     • ydotool or xdotool (for typing into windows)
       - For Wayland/GNOME: ydotool 1.0.4-2 from Debian (not Ubuntu's 0.1.8)
+        Must be properly configured with user in input group and service running
       - For X11: xdotool
     • whisper.cpp with whisper-cli and vad-speech-segments
 
@@ -110,25 +111,28 @@ if ! command -v ss &> /dev/null; then
 fi
 
 # Check if typing tools are available
-if ! command -v ydotool &> /dev/null && ! command -v xdotool &> /dev/null; then
-    echo "❌ Error: No typing tool found"
-    echo "   Install either:"
-    echo "   - ydotool (for Wayland/GNOME): Download Debian's ydotool_1.0.4-2_amd64.deb"
-    echo "     wget http://deb.debian.org/debian/pool/main/y/ydotool/ydotool_1.0.4-2_amd64.deb"
-    echo "     sudo dpkg -i ydotool_1.0.4-2_amd64.deb"
-    echo "     sudo usermod -aG input \$USER  # then logout/login"
-    echo "   - xdotool (for X11): sudo apt install xdotool"
-    exit 1
+TYPING_TOOL=""
+TYPING_TOOL_NAME=""
+
+# Prefer ydotool if available
+if command -v ydotool &> /dev/null; then
+    TYPING_TOOL="ydotool"
+    TYPING_TOOL_NAME="ydotool (Wayland/GNOME)"
 fi
 
-# Check if ydotoold is running (required for ydotool)
-if command -v ydotool &> /dev/null; then
-    if ! systemctl --user is-active --quiet ydotool.service; then
-        echo "⚠️  Warning: ydotoold service is not running"
-        echo "   Starting it now..."
-        systemctl --user start ydotool.service
-        sleep 0.5
-    fi
+# Fallback to xdotool if ydotool not available
+if [ -z "$TYPING_TOOL" ] && command -v xdotool &> /dev/null; then
+    TYPING_TOOL="xdotool"
+    TYPING_TOOL_NAME="xdotool (X11/XWayland)"
+fi
+
+# Error if no typing tool is available
+if [ -z "$TYPING_TOOL" ]; then
+    echo "❌ Error: No typing tool found"
+    echo "Install either:"
+    echo "  - ydotool (Wayland/GNOME): sudo apt install ydotool"
+    echo "  - xdotool (X11): sudo apt install xdotool"
+    exit 1
 fi
 
 # Check if required files exist
@@ -179,31 +183,53 @@ type_text() {
         return
     fi
     
-    echo "⌨️  Typing: $text"
+    echo "⌨️  Typing with $TYPING_TOOL_NAME: $text"
     
     # Small delay to ensure the window is ready to receive input
     sleep 0.1
     
-    # Try ydotool first (works on Wayland with GNOME and other compositors)
-    if command -v ydotool &> /dev/null; then
-        ydotool type "$text"
-        if [ $? -eq 0 ]; then
-            return 0
-        fi
-    fi
+    # Use the selected typing tool
+    case "$TYPING_TOOL" in
+        "ydotool")
+            local ydotool_output
+            ydotool_output=$(ydotool type "$text" 2>&1)
+            local ydotool_exit_code=$?
+            
+            if [ $ydotool_exit_code -eq 0 ]; then
+                return 0
+            else
+                echo "⚠️  ydotool failed to type text"
+                
+                # Check for specific error patterns and provide helpful guidance
+                if echo "$ydotool_output" | grep -q "failed to open uinput device"; then
+                    echo "   ❌ ydotool failed: Install Debian's version 1.0.4+ (Ubuntu's 0.1.8 has permission issues)"
+                elif echo "$ydotool_output" | grep -q "ydotoold backend unavailable"; then
+                    echo "   ❌ ydotool failed: Install Debian's version 1.0.4+ (Ubuntu's 0.1.8 lacks systemd service)"
+                else
+                    echo "   ❌ ydotool failed: Install Debian's version 1.0.4+ instead of Ubuntu's 0.1.8"
+                fi
+                
+                return 1
+            fi
+            ;;
+        "xdotool")
+            # --clearmodifiers ensures no stuck modifier keys interfere
+            # --delay 0 types as fast as possible
+            printf "%s" "$text" | xdotool type --clearmodifiers --delay 0 --file -
+            if [ $? -eq 0 ]; then
+                return 0
+            else
+                echo "⚠️  Warning: xdotool failed to type text"
+                return 1
+            fi
+            ;;
+        *)
+            echo "⚠️  Warning: No typing tool selected"
+            return 1
+            ;;
+    esac
     
-    # Fallback to xdotool (works on X11 and XWayland apps)
-    if command -v xdotool &> /dev/null; then
-        # --clearmodifiers ensures no stuck modifier keys interfere
-        # --delay 0 types as fast as possible
-        printf "%s" "$text" | xdotool type --clearmodifiers --delay 0 --file -
-        if [ $? -eq 0 ]; then
-            return 0
-        fi
-    fi
-    
-    # If we get here, neither tool worked
-    echo "⚠️  Warning: Could not type text. Install 'ydotool' (Wayland/GNOME) or 'xdotool' (X11)"
+    # Show transcribed text if typing failed
     echo "    Transcribed text: $text"
     return 1
 }
