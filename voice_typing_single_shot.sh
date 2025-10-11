@@ -47,7 +47,8 @@ DEPENDENCIES:
     • whisper.cpp with whisper-cli and vad-speech-segments
 
 MODELS REQUIRED:
-    • Whisper model: models/ggml-medium.en.bin
+    • Whisper model: models/ggml-large-v3-turbo-q8_0.bin (preferred)
+      Fallback: models/ggml-medium.en.bin
     • VAD model: models/ggml-silero-v5.1.2.bin
 
 EXAMPLE:
@@ -72,7 +73,11 @@ fi
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$SCRIPT_DIR"
 
-MODEL_PATH="models/ggml-medium.en.bin"
+# Model list with fallback order (first available will be used)
+MODELS=(
+    "models/ggml-large-v3-turbo-q8_0.bin"
+    "models/ggml-medium.en.bin"
+)
 VAD_MODEL_PATH="models/ggml-silero-v5.1.2.bin"
 WHISPER_CLI="./build/bin/whisper-cli"
 VAD_TOOL="./build/bin/vad-speech-segments"
@@ -139,8 +144,21 @@ if [ ! -f "$VAD_TOOL" ]; then
     exit 1
 fi
 
-if [ ! -f "$MODEL_PATH" ]; then
-    echo "❌ Error: Model file not found at: $MODEL_PATH"
+# Select the first available model from the list
+MODEL_PATH=""
+for model in "${MODELS[@]}"; do
+    if [ -f "$model" ]; then
+        MODEL_PATH="$model"
+        echo "✅ Using model: $model"
+        break
+    fi
+done
+
+if [ -z "$MODEL_PATH" ]; then
+    echo "❌ Error: No model files found from the following list:"
+    for model in "${MODELS[@]}"; do
+        echo "   - $model"
+    done
     echo "   Available models:"
     ls -1 models/ggml-*.bin 2>/dev/null | grep -v "for-tests" | sed 's/^/   - /'
     exit 1
