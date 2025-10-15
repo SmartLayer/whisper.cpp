@@ -4,7 +4,7 @@
 # This script records and monitors in real-time using Silero-VAD
 # It automatically stops when you pause speaking (1.5s silence detected)
 #
-# Dependencies: arecord, ffmpeg, awk, ydotool or xdotool
+# Dependencies: parecord, ffmpeg, awk, ydotool or xdotool
 # Requires: whisper.cpp built with vad-speech-segments and whisper-cli
 # Note: Uses Debian's ydotool 1.0.4-2 (not Ubuntu's 0.1.8) for Wayland/GNOME support
 
@@ -38,7 +38,7 @@ FEATURES:
     • Maximum recording time: 30 seconds
 
 DEPENDENCIES:
-    • arecord (ALSA sound recorder)
+    • parecord (PulseAudio/PipeWire sound recorder)
     • ffmpeg (audio processing)
     • netcat (nc) and ss (socket tools for inter-process signaling)
     • ydotool or xdotool (for typing into windows)
@@ -99,6 +99,18 @@ CHUNK_DURATION_MS=500       # Check every 500ms
 MAX_RECORDING_TIME_MS=30000 # Maximum recording time in milliseconds
 
 # Check if required tools are available
+if ! command -v parecord &> /dev/null; then
+    echo "❌ Error: parecord not found"
+    echo "   Install with: sudo apt install pulseaudio-utils"
+    exit 1
+fi
+
+if ! command -v ffmpeg &> /dev/null; then
+    echo "❌ Error: ffmpeg not found"
+    echo "   Install with: sudo apt install ffmpeg"
+    exit 1
+fi
+
 if ! command -v nc &> /dev/null; then
     echo "❌ Error: netcat (nc) not found"
     echo "   Install with: sudo apt install netcat-openbsd"
@@ -342,14 +354,14 @@ if ss -ln | grep -q ":$LISTEN_PORT "; then
         BASH_PID=$(ps -o ppid= -p $NC_PID | tr -d ' ')
         
         if [ -n "$BASH_PID" ]; then
-            # Find and kill the arecord child process of that bash script
-            ARECORD_PID=$(pgrep -P $BASH_PID arecord 2>/dev/null)
+            # Find and kill the parecord child process of that bash script
+            PARECORD_PID=$(pgrep -P $BASH_PID parecord 2>/dev/null)
             
-            if [ -n "$ARECORD_PID" ]; then
-                kill $ARECORD_PID 2>/dev/null
+            if [ -n "$PARECORD_PID" ]; then
+                kill $PARECORD_PID 2>/dev/null
                 echo "✅ Stopped recording - transcription will start automatically"
             else
-                echo "⚠️  Could not find arecord process"
+                echo "⚠️  Could not find parecord process"
             fi
         fi
     fi
@@ -370,8 +382,9 @@ LISTENER_PID=$!
 # Small delay to ensure listener is up
 sleep 0.1
 
-# Start recording in background
-arecord -f cd -t wav "$TEMP_AUDIO" 2>/dev/null &
+# Start recording in background (using parecord for PipeWire/PulseAudio default source)
+# Record at 16kHz mono - matches Whisper's preferred format and Jabra's native format
+parecord --format=s16le --rate=16000 --channels=1 "$TEMP_AUDIO" 2>/dev/null &
 RECORDING_PID=$!
 
 # Wait a moment for recording to start and accumulate some audio
