@@ -30,7 +30,7 @@ Located in: `voice_typing_single_shot.sh` line 80
 
 ```bash
 PROMPT_TEXT="This is a business transcription for Historic Rivermill. Key people: 
-Liansu Yu, Weiwu Zhang, Mike Wood, Rodrigo Peschiera, Priyanka Das, Diogo, 
+Liansu Yu, Weiwu Zhang, Iunus, Teegan, Rodrigo Peschiera, Priyanka Das, Diogo, 
 Bhoomika Gondaliya. Locations: Historic Rivermill, Mount Nathan, Beaudesert-Nerang 
 Road, Gold Coast Hinterland. Systems: Rezdy, Xero, Deputy, Square POS, AWS Connect. 
 Terms: FOH, BOH, RSA, TSS visa, KPI, SOP, Maître d', à la carte, Peruvian Paso 
