@@ -77,12 +77,15 @@ cd "$SCRIPT_DIR"
 
 # Model list with fallback order (first available will be used)
 MODELS=(
-    "models/ggml-large-v3-turbo-q8_0.bin"
     "models/ggml-medium.en.bin"
+    "models/ggml-large-v3-turbo-q8_0.bin"
 )
 VAD_MODEL_PATH="models/ggml-silero-v5.1.2.bin"
-WHISPER_CLI="./build/bin/whisper-cli"
-VAD_TOOL="./build/bin/vad-speech-segments"
+# Use system-wide if available, else Vulkan build, else regular build
+WHISPER_CLI=$(command -v whisper-cli 2>/dev/null || echo "./build-vulkan/bin/whisper-cli")
+[ -f "$WHISPER_CLI" ] || WHISPER_CLI="./build/bin/whisper-cli"
+VAD_TOOL=$(command -v vad-speech-segments 2>/dev/null || echo "./build-vulkan/bin/vad-speech-segments")
+[ -f "$VAD_TOOL" ] || VAD_TOOL="./build/bin/vad-speech-segments"
 RECORDING_TIMESTAMP=$(date +%s)
 TEMP_AUDIO="/tmp/voice_typing_recording_${RECORDING_TIMESTAMP}.wav"
 TEMP_CHUNK="/tmp/voice_typing_chunk_${RECORDING_TIMESTAMP}.wav"
@@ -202,16 +205,13 @@ if [ -z "$TYPING_TOOL" ]; then
     exit 1
 fi
 
-# Check if required files exist
-if [ ! -f "$WHISPER_CLI" ]; then
-    echo "❌ Error: whisper-cli not found at: $WHISPER_CLI"
-    echo "   Please build whisper.cpp first with: cd build && cmake .. && make"
+# Check if required tools exist
+if ! command -v "$WHISPER_CLI" &> /dev/null && [ ! -f "$WHISPER_CLI" ]; then
+    echo "❌ Error: whisper-cli not found. Build whisper.cpp or install to /usr/local/bin"
     exit 1
 fi
-
-if [ ! -f "$VAD_TOOL" ]; then
-    echo "❌ Error: vad-speech-segments not found at: $VAD_TOOL"
-    echo "   Please build whisper.cpp first with: cd build && cmake .. && make"
+if ! command -v "$VAD_TOOL" &> /dev/null && [ ! -f "$VAD_TOOL" ]; then
+    echo "❌ Error: vad-speech-segments not found. Build whisper.cpp or install to /usr/local/bin"
     exit 1
 fi
 
