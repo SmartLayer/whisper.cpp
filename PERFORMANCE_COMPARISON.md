@@ -1,15 +1,24 @@
 # Hardware Acceleration Performance Comparison
 
-## Test System 1: Intel Arc (Previous)
+## Test Laptop: Intel Arc (Current System)
 - **CPU**: Intel Core Ultra 7 258V (Lunar Lake)
 - **GPU**: Intel Arc Graphics 130V/140V (integrated)
-- **Model**: ggml-medium.en.bin
 - **Test File**: samples/jfk.wav (11 seconds, 176,000 samples)
 - **Threads**: 4
-- **Test Date**: 9 October 2025
+
+### Test Session 1 - October 9, 2025 (Original Tests)
+- **Model**: ggml-medium.en.bin
 - **Verification**: Results verified reproducible with same audio file (CPU encode: 12,635.75 ms vs documented 12,537 ms - 0.8% variance)
 
-## Test System 2: NVIDIA RTX 2070 SUPER (Current)
+### Test Session 2 - October 16, 2025 (Retest)
+- **Models Tested**: ggml-tiny.en.bin, ggml-small.en.bin & ggml-medium.en.bin (fresh downloads)
+- **Resolution**: Small & Medium models were corrupted, causing crashes. Fresh downloads work perfectly!
+- **Small Model**: Initially corrupted (272/479 tensors), re-downloaded successfully (465M)
+- **Medium Model**: Initially corrupted, re-downloaded successfully (1.46GB)
+- **Build Verification**: ✅ Confirmed builds optimized for Arrow Lake-S (`-march=native`, GCC detects as `arrowlake-s`)
+- **CPU Features Used**: AVX2, AVX-VNNI, FMA, BMI2, OpenMP all enabled ✅
+
+## Test Desktop: NVIDIA RTX 2070 SUPER
 - **CPU**: AMD Ryzen 7 5800X (8-core, 16-thread)
 - **GPU**: NVIDIA GeForce RTX 2070 SUPER (8GB VRAM, Compute Capability 7.5)
 - **CUDA**: Version 12.2.140
@@ -19,16 +28,20 @@
 
 ## Results Summary
 
-### System 1: Intel Arc (Previous System)
+### Laptop: Intel Arc (Current System)
 
-#### CPU Only (Baseline - Before GPU Acceleration)
+#### October 9, 2025 Tests (Medium Model - WORKING)
+
+**CPU Only (Baseline)**
 ```
+Model: ggml-medium.en.bin
 encode time = 12,536 ms
 total time  = ~20,000 ms
 ```
 
-#### Vulkan GPU Acceleration ✅ **WINNER**
+**Vulkan GPU Acceleration ✅**
 ```
+Model: ggml-medium.en.bin
 whisper_backend_init_gpu: using Vulkan0 backend
 encode time = 4,890 ms  (2.56x faster than CPU)
 decode time = 137 ms
@@ -36,10 +49,81 @@ batchd time = 6,923 ms
 total time  = 12,856 ms
 ```
 
-**Status**: ✅ Working perfectly
+**Status**: ✅ Working perfectly on Oct 9
 **Speedup**: 2.56x faster encoding vs CPU-only
 
-### System 2: NVIDIA RTX 2070 SUPER (Current System)
+#### October 16, 2025 Tests (Tiny Model Only)
+
+⚠️ **Critical Change**: Medium model now **crashes system** even on CPU-only! Testing only with tiny model.
+
+**CPU Only (New Baseline)**
+```
+Model: ggml-tiny.en.bin
+encode time = 461.24 ms
+total time  = 732.29 ms
+```
+
+**Vulkan GPU Acceleration (Oct 16 Fresh Build)**
+```
+Model: ggml-tiny.en.bin
+whisper_backend_init_gpu: using Vulkan0 backend
+encode time = 447.52 ms  (1.03x faster than CPU)
+decode time = 91.06 ms
+batchd time = 751.15 ms
+total time  = 1490.82 ms
+```
+
+**Status**: ⚠️ Tiny model works, but Vulkan overhead dominates
+**Speedup**: 1.03x faster encoding, but 2.0x slower total time vs CPU-only
+**Issue**: GPU acceleration benefits are minimal for tiny model
+
+**Small Model (ggml-small.en.bin - Fresh Download, Oct 16)**
+```
+Model: ggml-small.en.bin (465M)
+whisper_backend_init_gpu: using Vulkan0 backend
+encode time = 916.52 ms  (3.36x faster than CPU!)
+decode time = 20.01 ms
+batchd time = 576.10 ms
+total time  = 1967.23 ms
+```
+
+**CPU Only (Small Model Baseline)**
+```
+Model: ggml-small.en.bin (465M)
+encode time = 3078.89 ms
+decode time = 19.61 ms
+batchd time = 565.70 ms
+total time  = 4047.25 ms
+```
+
+**Status**: ✅ Excellent performance! GPU acceleration shines with larger models
+**Speedup**: 3.36x faster encoding, 2.06x faster total time vs CPU-only
+**Conclusion**: Vulkan provides significant benefits for small model and larger
+
+**Medium Model (ggml-medium.en.bin - Fresh Download, Oct 16)**
+```
+Model: ggml-medium.en.bin (1.46GB)
+whisper_backend_init_gpu: using Vulkan0 backend
+encode time = 2316.49 ms  (5.44x faster than CPU!)
+decode time = 18.56 ms
+batchd time = 1041.00 ms
+total time  = 4192.58 ms
+```
+
+**CPU Only (Medium Model Baseline)**
+```
+Model: ggml-medium.en.bin (1.46GB)
+encode time = 12609.80 ms
+decode time = 30.24 ms
+batchd time = 1788.53 ms
+total time  = 15391.65 ms
+```
+
+**Status**: ✅ **Spectacular performance!** GPU acceleration dominates for larger models
+**Speedup**: 5.44x faster encoding, 3.67x faster total time vs CPU-only
+**Conclusion**: Vulkan is excellent for medium+ models. GPU benefits scale with model size!
+
+### Desktop: NVIDIA RTX 2070 SUPER
 
 #### CPU Only (Optimized Baseline)
 ```
@@ -107,19 +191,64 @@ sudo dpkg -i level-zero_1.24.2+u22.04_amd64.deb
 - SYCL runtime adds significant latency
 - whisper.cpp SYCL backend not well optimized for integrated Arc GPUs
 
+## Critical Issues Discovered & Resolved (October 16, 2025)
+
+### Model File Corruption - ROOT CAUSE IDENTIFIED ✅
+
+1. **Small Model Corruption** ❌ → ✅ **RESOLVED**
+   - Initial file: Corrupted (272/479 tensors loaded)
+   - Re-downloaded: 465M, works perfectly on all builds
+   - Testing confirmed: All 3 builds showed same error = file issue, not build issue
+
+2. **Medium Model Corruption** ❌ → ✅ **RESOLVED**
+   - Initial file: Corrupted, causing system crashes even on CPU-only
+   - Re-downloaded: 1.46GB, works perfectly on all builds
+   - Performance: Matches Oct 9 results (CPU: 12.6s) and exceeds expectations with Vulkan (5.44x faster!)
+
+3. **SYCL Causes Severe Crashes** ⚠️
+   - SYCL build process crashes system during compilation
+   - Requires 30-second power button press to recover
+   - DO NOT attempt SYCL builds on this system
+
+### Possible Causes
+- Upstream whisper.cpp changes (commit 98930fde on Oct 9)?
+- Model file corruption over time?
+- System driver or kernel updates?
+- Hardware instability developing?
+
 ## Recommendation
 
-### For Intel Arc Systems
-**Use Vulkan acceleration** - it provides excellent performance (2.56x speedup) and works reliably with the Intel Arc 130V/140V iGPU.
+### For Intel Arc Systems (UPDATED Oct 16, 2025)
+**Status**: ✅ **Working well - model size determines best backend**
+
+- **Tiny model (75M)**: Use **CPU-only** build (faster: 732ms vs 1491ms)
+  - `./build-cpu/bin/whisper-cli -m models/ggml-tiny.en.bin`
+  - GPU overhead dominates for tiny model
+
+- **Small model (465M)**: Use **Vulkan** build (3.36x faster: 1967ms vs 4047ms) 🚀
+  - `./build-vulkan/bin/whisper-cli -m models/ggml-small.en.bin`
+  - Good balance of speed and accuracy
+  
+- **Medium model (1.46GB)**: Use **Vulkan** build (5.44x faster: 4193ms vs 15392ms) 🚀🚀🚀
+  - `./build-vulkan/bin/whisper-cli -m models/ggml-medium.en.bin`
+  - **Highly recommended for production voice typing!**
+  - Best accuracy with spectacular performance
+
+**Key Insight**: GPU acceleration benefits scale dramatically with model size. Medium model delivers the best overall experience on Intel Arc!
 
 ### For NVIDIA RTX Systems  
 **Use CUDA acceleration** - it provides MASSIVE performance improvements (11.9x-48.8x speedup) and works perfectly with NVIDIA GPUs.
 
 ### For Your Voice Typing Script
 
-**Current System (RTX 2070 SUPER)**: Use the CUDA-accelerated binary at `./build-cuda/bin/whisper-cli` for maximum performance!
+**Current System (Intel Arc 130V/140V)**: 
+- **Best Choice**: Vulkan + medium model: `./build-vulkan/bin/whisper-cli -m models/ggml-medium.en.bin`
+  - 5.44x faster than CPU (4.2s vs 15.4s for 11s audio)
+  - Best accuracy for voice typing
+- **Alternative**: Vulkan + small model for slightly faster processing (2.0s vs 4.2s)
+- **Quick tasks**: CPU + tiny model (0.7s)
 
-**Previous System (Intel Arc)**: Use the Vulkan-accelerated binary at `./build/bin/whisper-cli` for good performance.
+**Other System (if NVIDIA RTX)**: Use CUDA-accelerated binary for maximum performance.
 
 ## Build Information
 
