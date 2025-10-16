@@ -1,6 +1,6 @@
 # Hardware Acceleration Performance Comparison
 
-## Test Laptop: Intel Arc (Current System)
+## Test Laptop: Intel Arc
 - **CPU**: Intel Core Ultra 7 258V (Lunar Lake)
 - **GPU**: Intel Arc Graphics 130V/140V (integrated)
 - **Test File**: samples/jfk.wav (11 seconds, 176,000 samples)
@@ -28,7 +28,7 @@
 
 ## Results Summary
 
-### Laptop: Intel Arc (Current System)
+### Laptop: Intel Arc
 
 #### October 9, 2025 Tests (Medium Model - WORKING)
 
@@ -241,14 +241,14 @@ sudo dpkg -i level-zero_1.24.2+u22.04_amd64.deb
 
 ### For Your Voice Typing Script
 
-**Current System (Intel Arc 130V/140V)**: 
+**Laptop (Intel Arc 130V/140V)**: 
 - **Best Choice**: Vulkan + medium model: `./build-vulkan/bin/whisper-cli -m models/ggml-medium.en.bin`
   - 5.44x faster than CPU (4.2s vs 15.4s for 11s audio)
   - Best accuracy for voice typing
 - **Alternative**: Vulkan + small model for slightly faster processing (2.0s vs 4.2s)
 - **Quick tasks**: CPU + tiny model (0.7s)
 
-**Other System (if NVIDIA RTX)**: Use CUDA-accelerated binary for maximum performance.
+**Desktop (NVIDIA RTX)**: Use CUDA-accelerated binary for maximum performance.
 
 ## Build Information
 
