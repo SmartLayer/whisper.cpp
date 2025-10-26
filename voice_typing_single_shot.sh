@@ -93,7 +93,7 @@ LISTEN_PORT=49152  # Port to indicate recording in progress
 
 # Initial prompt to improve accuracy for domain-specific terms
 # Condensed from capture-correction-index.md to fit Whisper's ~224 token limit
-PROMPT_TEXT="This is a business transcription for Historic Rivermill. Key people: Liansu Yu, Weiwu Zhang, Iunus, Teegan, Rodrigo Peschiera, Priyanka Das, Diogo, Bhoomika Gondaliya. Locations: Historic Rivermill, Mount Nathan, Beaudesert-Nerang Road, Gold Coast Hinterland. Systems: Rezdy, Xero, Deputy, Square POS, AWS Connect. Terms: FOH, BOH, RSA, TSS visa, KPI, SOP, Maître d', à la carte, Peruvian Paso horses. Organizations: DETSI, TEQ, OLGR, ATO."
+PROMPT_TEXT="This is a business transcription for Historic Rivermill. Key people: Liansu Yu, Weiwu Zhang, Iunus, Teegan, Rodrigo Peschiera, Priyanka Das, Diogo, Bhoomika Gondaliya. Locations: Historic Rivermill, Mount Nathan, Beaudesert-Nerang Road, Gold Coast Hinterland. Systems: Rezdy, Xero, Deputy, Square, Sonas, AWS Connect. Terms: FOH, BOH, RSA, TSS visa, KPI, SOP, Maître d', à la carte, Peruvian Paso horses. Organizations: DETSI, TEQ, OLGR."
 
 # VAD settings - tuned for pause detection
 VAD_THRESHOLD=0.4           # Higher = more confident speech required
