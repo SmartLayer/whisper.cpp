@@ -1,12 +1,12 @@
 // Voice typing with automatic speech detection and text injection
 // This example captures audio from microphone, detects speech pauses,
-// transcribes using whisper.cpp, and injects text using libei (Wayland/GNOME)
+// transcribes using whisper.cpp, and injects text using uinput (Linux)
 
 #include "common-sdl.h"
 #include "common.h"
 #include "common-whisper.h"
 #include "whisper.h"
-#include "libei-text-input.h"
+#include "uinput-text-input.h"
 
 #include <chrono>
 #include <cstdio>
@@ -116,6 +116,10 @@ void print_usage(int argc, char ** argv, const voice_typing_params & params) {
     fprintf(stderr, "  -fa,      --flash-attn     [%-7s] enable flash attention\n", params.flash_attn ? "true" : "false");
     fprintf(stderr, "  -nfa,     --no-flash-attn  [%-7s] disable flash attention\n", params.flash_attn ? "false" : "true");
     fprintf(stderr, "\n");
+    fprintf(stderr, "test mode:\n");
+    fprintf(stderr, "  --test-type TEXT           type TEXT directly (bypass recording/transcription)\n");
+    fprintf(stderr, "                             useful for rapid testing of text injection\n");
+    fprintf(stderr, "\n");
     fprintf(stderr, "Press the shortcut again while recording to stop early and transcribe immediately.\n");
     fprintf(stderr, "\n");
 }
@@ -152,6 +156,35 @@ bool parse_params(int argc, char ** argv, voice_typing_params & params) {
 
 int main(int argc, char ** argv) {
     voice_typing_params params;
+    
+    // Check for test mode first
+    std::string test_text;
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "--test-type") {
+            if (i + 1 < argc) {
+                test_text = argv[i + 1];
+                // If test mode, just type the text and exit
+                fprintf(stderr, "🧪 TEST MODE: Typing text in 2 seconds...\n");
+                fprintf(stderr, "   Text: %s\n", test_text.c_str());
+                sleep(2);
+                
+                // Add newline to the end
+                test_text += "\n";
+                
+                if (uinput_type_text(test_text)) {
+                    fprintf(stderr, "✅ Test complete!\n");
+                    return 0;
+                } else {
+                    fprintf(stderr, "❌ Test failed!\n");
+                    return 1;
+                }
+            } else {
+                fprintf(stderr, "Error: --test-type requires TEXT argument\n");
+                return 1;
+            }
+        }
+    }
     
     if (!parse_params(argc, argv, params)) {
         return 1;
@@ -331,8 +364,8 @@ int main(int argc, char ** argv) {
     
     fprintf(stderr, "⌨️  Typing: %s\n", transcribed_text.c_str());
     
-    // Type the text using libei
-    if (libei_type_text(transcribed_text)) {
+    // Type the text using uinput (direct kernel access - much faster than ydotool)
+    if (uinput_type_text(transcribed_text)) {
         fprintf(stderr, "✅ Done!\n");
     } else {
         fprintf(stderr, "⚠️  Failed to type text\n");

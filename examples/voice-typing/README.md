@@ -8,9 +8,9 @@ This example captures audio from your microphone, detects when you finish speaki
 
 - **Automatic silence detection**: Stops recording after 3 seconds of silence (configurable)
 - **Early stop**: Press the keyboard shortcut again while recording to transcribe immediately
-- **Fast text injection**: Uses libei for efficient text input on Wayland/GNOME
+- **Fast text injection**: Uses Linux uinput for efficient text input on X11 and Wayland
 - **Model stays loaded**: Unlike bash scripts, the model remains in memory for potential repeated use
-- **Minimal dependencies**: Only SDL2 (audio capture) and optionally libei (text injection)
+- **Minimal dependencies**: Only SDL2 (audio capture) - text injection uses kernel uinput
 
 ## System Requirements
 
@@ -18,13 +18,9 @@ This example captures audio from your microphone, detects when you finish speaki
 - Linux (tested on Ubuntu 25.04 with GNOME 48 on Wayland)
 - SDL2 library
 - whisper.cpp models
+- User in `input` group (for uinput access)
 
-### Optional (for text injection)
-- libei-dev (version 1.3+)
-- GNOME Remote Desktop with EIS support (GNOME 48+)
-- Wayland session
-
-**Note**: Without libei, the program will still transcribe and display the text, but won't inject it into applications.
+**Note**: Text injection uses Linux uinput kernel interface. Works on both X11 and Wayland.
 
 ## Building
 
@@ -32,20 +28,22 @@ This example captures audio from your microphone, detects when you finish speaki
 
 On Debian/Ubuntu:
 ```bash
-# Required
+# SDL2 for audio capture
 sudo apt install libsdl2-dev
 
-# Optional (for text injection)
-sudo apt install libei-dev
+# Add user to input group for uinput access
+sudo usermod -aG input $USER
+# Log out and back in for group change to take effect
 ```
 
 On Fedora:
 ```bash
-# Required
+# SDL2 for audio capture
 sudo dnf install SDL2-devel
 
-# Optional (for text injection)
-sudo dnf install libei-devel
+# Add user to input group for uinput access
+sudo usermod -aG input $USER
+# Log out and back in for group change to take effect
 ```
 
 ### Build with CMake
@@ -62,15 +60,18 @@ cmake --build build --config Release
 # The binary will be at: build/bin/whisper-voice-typing
 ```
 
-The build system will automatically detect libei. If found, text injection support will be compiled in. If not found, you'll see a warning but the build will continue without text injection support.
+Text injection support is built-in on Linux (uses uinput kernel interface).
 
-### Verify libei Support
+### Verify uinput Access
 
-Check if your binary has libei support:
+Check if you have access:
 ```bash
-# If this prints the transcribed text, libei is NOT available
-# If it prints an error about libei, libei IS available
-./build/bin/whisper-voice-typing -m models/ggml-base.en.bin
+# Should show you're in the input group
+groups | grep input
+
+# Check uinput device access
+ls -l /dev/uinput
+# Should show: crw-rw---- ... root input ...
 ```
 
 ## Usage
@@ -150,7 +151,7 @@ echo "Key people: Alice Johnson, Bob Smith. Systems: Salesforce, SAP." > prompt.
 2. **Speech Detection**: Simple VAD checks audio every 500ms for speech activity
 3. **Silence Detection**: Tracks consecutive silence; stops after threshold reached
 4. **Transcription**: Whisper model transcribes the full audio clip
-5. **Text Injection**: libei sends keyboard events to inject text into active window
+5. **Text Injection**: uinput sends keyboard events to inject text into active window
 
 ### Signal-based IPC
 
@@ -164,28 +165,24 @@ This allows the same keyboard shortcut to both start recording and stop it early
 
 ## Troubleshooting
 
-### "libei support not compiled"
+### "Failed to open /dev/uinput"
 
-You need to install libei-dev and rebuild:
+You need to be in the input group:
 ```bash
-sudo apt install libei-dev
-cmake -B build -DWHISPER_SDL2=ON
-cmake --build build --config Release
+# Add yourself to input group
+sudo usermod -aG input $USER
+
+# Log out and back in (IMPORTANT!)
+# Or use: newgrp input
+
+# Verify
+groups | grep input
+ls -l /dev/uinput  # Should show: crw-rw---- ... input ...
 ```
 
 ### "Failed to connect to EIS socket"
 
-Make sure GNOME Remote Desktop is installed and running:
-```bash
-# Install if missing
-sudo apt install gnome-remote-desktop
-
-# Check if running
-systemctl --user status gnome-remote-desktop
-
-# Start if needed
-systemctl --user start gnome-remote-desktop
-```
+This error should not appear anymore - the implementation uses uinput, not EIS/libei.
 
 ### "No speech detected"
 
@@ -228,13 +225,12 @@ cd models
 ## Platform Support
 
 ### Current Support
-- **Linux/Wayland/GNOME**: Full support with libei text injection
-- **Linux/X11**: Transcription works; text injection not yet implemented (consider using xdotool externally)
+- **Linux (X11 and Wayland)**: Full support with uinput text injection
+- **macOS/Windows**: Not yet supported (platform-specific APIs needed)
 
 ### Future Platform Support
 - **macOS**: Would require CoreGraphics/CGEventCreateKeyboardEvent API
 - **Windows**: Would require SendInput API
-- **Other Wayland compositors**: Should work if they support the Remote Desktop portal
 
 Pull requests welcome for additional platform support!
 
@@ -242,7 +238,7 @@ Pull requests welcome for additional platform support!
 
 - First run loads the model (1-3 seconds depending on model size)
 - Subsequent runs would be instant if the tool kept running (not implemented yet - exits after each transcription)
-- Text injection via libei is significantly faster than ydotool character-by-character mode
+- Text injection via uinput is very fast (direct kernel interface)
 - VAD checking adds ~500ms overhead but prevents false activations
 
 ## Limitations
@@ -250,7 +246,7 @@ Pull requests welcome for additional platform support!
 - Currently exits after each transcription (doesn't stay resident)
 - Simple VAD may have false positives/negatives in noisy environments
 - English language models work best (multilingual models also supported)
-- Requires Wayland with EIS support for text injection
+- Requires Linux with uinput support
 - Maximum recording time is 30 seconds (configurable)
 
 ## License
